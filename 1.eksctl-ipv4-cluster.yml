@@ -1,0 +1,101 @@
+eksctl get cluster --region=us-east-2
+eksctl create cluster -f eksctl-ipv4-cluster.yml &
+eksctl get nodegroups  --cluster=nthanniru-cluster-01 --region=us-east-2
+eksctl delete nodegroup nodegroup1 --cluster=nthanniru-cluster-01 --region=us-east-2
+
+eksctl delete cluster --region=us-east-2 --name=nthanniru-cluster-01 &
+Go to Cloudformation and delete if any pending stacks exists.
+aws sts get-caller-identity
+aws eks update-kubeconfig --region us-east-2 --name nthanniru-cluster-01
+kubectl get nodes
+kubectl get pods -A
+ku delete -f Ingress.yml -f deployment.yml
+
+
+#Make sure you have deleted old cloudformation stacks before deploying below commands.
+#The below cluster needs 25 mins cor creation.
+---
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: nthanniru-cluster-01
+  region: us-east-2
+  version: "1.30"
+
+kubernetesNetworkConfig:
+  ipFamily: IPv4
+addons:
+  - name: vpc-cni
+    version: latest
+  - name: coredns
+    version: latest
+  - name: kube-proxy
+    version: latest
+  - name: aws-ebs-csi-driver
+    version: latest
+  - name: eks-pod-identity-agent
+    version: latest
+  # - name: aws-efs-csi-driver
+  #   version: latest
+  # - name: aws-mountpoint-s3-csi-driver
+  #   version: latest
+
+iam:
+  withOIDC: true
+
+managedNodeGroups:
+  - name: nodegroup1
+    instanceType: t2.large
+    minSize: 2
+    desiredCapacity: 3
+    maxSize: 4
+    availabilityZones: ["us-east-2a", "us-east-2b", "us-east-2c"]
+    volumeSize: 50
+    ssh:
+      allow: true
+      publicKeyPath: ~/.ssh/id_ed25519.pub
+
+#Adding eks-pod-identity-agent addon
+#https://repost.aws/articles/AR5ogohRSfRzCFh8ooFeq8kg/how-to-enable-amazon-eks-pod-identity-and-assign-role-to-service-account-running-workloads
+
+aws eks create-addon \
+--cluster-name REPLACEME_WITH_CLUSTER_NAME \
+--addon-name eks-pod-identity-agent \
+--addon-version v1.3.2-eksbuild.2
+
+root@ip-10-40-1-98:~# ku get pods -A | grep -i eks-pod-identity
+kube-system   eks-pod-identity-agent-59vw6                    1/1     Running   0          86s
+kube-system   eks-pod-identity-agent-7rs6j                    1/1     Running   0          86s
+kube-system   eks-pod-identity-agent-nrbb7                    1/1     Running   0  
+
+Make sure you have updated the Role Trust Policy & IAM Policy pod-idenity.json
+
+aws eks create-pod-identity-association \
+--cluster-name nthanniru-cluster-01 \
+--namespace default --service-account default \
+--role-arn arn:aws:iam::721834156908:role/awsb63-ec2-sessions-manager-role \
+--region us-east-2
+
+
+#EKS Cluster Upgrade.
+eksctl upgrade cluster --name=nthanniru-cluster-01 --version=1.31 --region=us-east-2 --approve
+eksctl get cluster --region=us-east-2
+
+eksctl upgrade nodegroup1 \
+  --name=node-group-name \
+  --cluster=nthanniru-cluster-01 \
+  --region=us-east-2 \
+  --kubernetes-version=1.31
+
+eksctl get nodegroups  --cluster=nthanniru-cluster-01 --region=us-east-2
+
+You cannot downgrade the Kubernetes of an Amazon EKS cluster. Instead, create a new cluster on a previous Amazon EKS version and migrate the workloads.
+
+
+
+
+
+
+
+
